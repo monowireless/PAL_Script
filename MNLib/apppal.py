@@ -89,6 +89,7 @@ class AppPAL(AppBase):
 						__StrSensorID = 'Humidity'
 						__Div = 100.0
 					elif __SensorID == 0x03: __StrSensorID = 'Illuminance'
+					elif __SensorID == 0x04: __StrSensorID = 'Acceleration'
 					elif __SensorID == 0x30:
 						if __ExByte == 0: __StrSensorID = 'ADC'
 						if __ExByte == 8: __StrSensorID = 'Power'
@@ -98,15 +99,38 @@ class AppPAL(AppBase):
 					else: __StrSensorID = 'Unknown'
 
 					if __ErrCode == 0:
-						if __Type == 'Variable':
-							self.ReadDict[__StrSensorID] = self.ByteArr[__Addr:__Addr+__DataNum]
-						else:
-							self.ReadDict[__StrSensorID] = self.BinList2Int(self.ByteArr[__Addr:__Addr+__DataNum])
-							if __bSigned:
-								self.ReadDict[__StrSensorID] = self.Unsigned2Signed(self.ReadDict[__StrSensorID], __DataNum)
+						if __StrSensorID == 'Acceleration':
+							if ((__StrSensorID+'X') in self.ReadDict) == False:
+								__freq = __ExByte>>5
+								if __freq == 4:
+									self.ReadDict['SamplingFrequency'] = 380
+								elif __freq == 3:
+									self.ReadDict['SamplingFrequency'] = 190
+								elif __freq == 2:
+									self.ReadDict['SamplingFrequency'] = 100
+								elif __freq == 1:
+									self.ReadDict['SamplingFrequency'] = 50
+								else:
+									self.ReadDict['SamplingFrequency'] = 25
 
-							if __Div != 1 and __Div != 0:
-								self.ReadDict[__StrSensorID] /= __Div
+								self.ReadDict[__StrSensorID+'X'] = list()
+								self.ReadDict[__StrSensorID+'Y'] = list()
+								self.ReadDict[__StrSensorID+'Z'] = list()
+
+							self.ReadDict[__StrSensorID+'X'].append( self.Unsigned2Signed(self.BinList2Int(self.ByteArr[__Addr:__Addr+2]), 2)/1000.0 )
+							self.ReadDict[__StrSensorID+'Y'].append( self.Unsigned2Signed(self.BinList2Int(self.ByteArr[__Addr+2:__Addr+4]), 2)/1000.0 )
+							self.ReadDict[__StrSensorID+'Z'].append( self.Unsigned2Signed(self.BinList2Int(self.ByteArr[__Addr+4:__Addr+6]), 2)/1000.0 )
+						else:
+							if __Type == 'Variable':
+								self.ReadDict[__StrSensorID] = self.ByteArr[__Addr:__Addr+__DataNum]
+							else:
+								self.ReadDict[__StrSensorID] = self.BinList2Int(self.ByteArr[__Addr:__Addr+__DataNum])
+								if __bSigned:
+									self.ReadDict[__StrSensorID] = self.Unsigned2Signed(self.ReadDict[__StrSensorID], __DataNum)
+
+								if __Div != 1 and __Div != 0:
+									self.ReadDict[__StrSensorID] /= __Div
+
 						__Addr += __DataNum
 					else:
 						self.ReadDict[__StrSensorID] = 'Error(0x%02X)' % __ErrCode
@@ -379,17 +403,7 @@ class AppPAL(AppBase):
 	def OutputCSV(self):
 		self.FileOpen()
 		self.OutputList(self.CreateOutputList())
-		if self.ReadDict['Sensor'] == 0x35:
-			if self.ReadDict['Mode'] == 0xFA:
-				i = 1
-				__AccelList = ['']*len(self.ReadDict)
-				while i < len(self.ReadDict['AccelerationX']):
-					__AccelList[len(__AccelList)-3] =  self.ReadDict['AccelerationX'][i]
-					__AccelList[len(__AccelList)-2] =  self.ReadDict['AccelerationY'][i]
-					__AccelList[len(__AccelList)-1] =  self.ReadDict['AccelerationZ'][i]
-					self.OutputList(__AccelList)
-					i += 1
-		elif self.ReadDict['Sensor'] == 0x62:
+		if (self.ReadDict['Sensor'] == 0x35 and self.ReadDict['Mode'] == 0xFA) or self.ReadDict['Sensor'] == 0x62 or (self.ReadDict['Sensor'] == 0x80 and self.ReadDict['PALID'] == 0x03):
 			i = 1
 			__AccelList = ['']*len(self.ReadDict)
 			while i < len(self.ReadDict['AccelerationX']):

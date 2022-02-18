@@ -29,7 +29,7 @@ bEnableLog = False
 bEnableErrMsg = False
 
 # プログラムバージョン
-Ver = "1.0.0"
+Ver = "1.0.1"
 
 def ParseArgs():
 	global options, args
