@@ -1,5 +1,9 @@
 # coding: UTF-8
 
+# Copyright (C) 2017 Mono Wireless Inc. All Rights Reserved.
+# Released under MW-SLA-*J,*E (MONO WIRELESS SOFTWARE LICENSE
+# AGREEMENT)
+
 from parseFmt import FmtBase
 
 # バイナリ書式を解読する
@@ -14,8 +18,7 @@ class FmtBinary(FmtBase):
             'L' : self.s_len1,
             'l' : self.s_len2,
             'p' : self.s_payload,
-            'x' : self.s_xor,
-            'f' : self.s_footer,
+            'x' : self.s_xor
         }
 
     def reinit(self):
@@ -47,19 +50,24 @@ class FmtBinary(FmtBase):
             self.state = 'x'
 
     def s_xor(self, c):
-        self.xor_read = c
-        self.calc_xor()
-        self.state = 'f'
-
-    def calc_xor(self):
-        self.xor_calc = 0
-        for x in self.payload: 
-            self.xor_calc ^= x
-        return self.xor_calc
-
-    def s_footer(self,c):
-        if c == 0x04:
-            if self.xor_read == self.xor_calc:
-                self.checksum = self.xor_read
-                self.b_complete = True
-        self.state = 'e'
+        self.checksum = self.S_calc_xor(self.payload) 
+        if c == self.checksum:
+            self.b_complete = True
+            self.state = 'e'
+        
+    @staticmethod
+    def S_output(l_payload):
+        l = 0x8000 + len(l_payload)
+        o = [ 0xa5, 0x5a ]
+        o += [ (l & 0xFF00) >> 8, l & 0xff ] 
+        o += l_payload
+        o += [FmtBinary.S_calc_xor(l_payload)]
+        # print(o)
+        return bytes(o)
+    
+    @staticmethod
+    def S_calc_xor(lst):
+        xor_calc = 0
+        for x in lst: 
+            xor_calc ^= x
+        return xor_calc# coding: UTF-8

@@ -6,44 +6,86 @@ class FmtAscii(FmtBase):
     def __init__(self):
         self.reinit()
 
+        # 状態と呼び出すべき関数のテーブル
+        self.key_dict = {
+            'e' : self.s_empty,
+            'p' : self.s_payload1,
+            'q' : self.s_payload2,
+        }
+        
+        self._first_byte = 0
+
     def reinit(self):
         FmtBase.reinit(self)
-        self.check_read = 0
-        self.check_calc = 0
 
-    def process(self, c):
-        self.reinit()                   # 変数の初期化
-        bStr = isinstance(c,str)
-
-        # 最初の文字が:であることを確認
-        bCom = False
-        if bStr:
-            if c[0] == ':':
-                bCom = True
-                s = c
+    def input_hex_chr(self, c):
+        if (c >= 0x30 and c <= 0x39):
+            c = c - 0x30
+        elif (c >= 0x41 and c <= 0x46):
+            c = c - 0x41 + 10
         else:
-            if c[0] == 58:
-                bCom = True
-                s = c.decode('ascii')    # 文字列に変換
-                s = s.replace('\0','')
+            c = None
+        
+        return c
+        
+    def s_empty(self, c):
+        if c == ord(':') or c == 0x0a or c == 0x0d:
+            self.reinit()
+            self.b_complete = False
+            if c == ord(':'):
+               self.state = 'p'
 
-        if bCom:
-            i = 0
-            # listに変換
-            while i < (len(s)-3)/2:
-                self.payload.append(int(s[2*i+1: 2*i+3], 16))
-                i += 1
-
-            self.check_read = int(c[(len(c)-2):], 16)   # チェックサム
-            self.calc_check()               # チェックサムの計算
-            if self.check_calc == self.check_read:
-                self.checksum = self.check_read
-                self.len = len( self.payload )
+    def s_payload1(self, c):
+        if self.len_read > 0 and (c == 10 or c == 13): # cr or lf
+            if sum(self.payload) & 0xff == 0:
+                # LRC is okay
                 self.b_complete = True
+                self.checksum = self.payload.pop() # remove last item
+                self.len = len(self.payload) # reset the length
+                
+            self.state = 'e'
+            return
+        
+        if self.len_read > 0 and c == ord('X'): # skip checksum input
+            self.b_complete = True
+            self.checksum = self.S_lrc(self.payload)
+            self.state = 'e'
+            return
+        
+        self._first_byte = self.input_hex_chr(c)
+        # print(self._first_byte)
+        
+        if self._first_byte is not None:
+            self.state = 'q'
+        else:
+            self.state = 'e'
 
-    def calc_check(self):
-        self.check_calc = 0
-        for x in self.payload:
-            self.check_calc = 0xFF&( self.check_calc+x )
+    def s_payload2(self, c):
+        c = self.input_hex_chr(c)
+        if c is not None:
+            c = c + (self._first_byte << 4)
+            
+            self.len_read = self.len_read + 1
+            self.payload.append(c)
+            self.state = 'p'
+        else:
+            self.state = 'e'
 
-        self.check_calc = 0x0100 - self.check_calc
+    @staticmethod
+    def S_output(lst):
+        lrc = FmtAscii.S_lrc(lst)
+        o = ':'
+        for x in lst:
+            o += "%02X" % x
+        o += "%02X" % lrc
+        o += '\n'
+        return o.encode()
+        
+    @staticmethod
+    def S_lrc(lst):
+        c = 0
+        for x in lst:
+            c = 0xFF&( c+x )
+
+        c = 0x0100 - c
+        return c

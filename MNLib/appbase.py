@@ -10,8 +10,9 @@ except ImportError:
 
 import datetime
 import os
+#from queue import Queue
 
-from readSerial import ReadSerial
+from mwSerial import MWSerial
 
 #
 # アプリごとに使用するであろう共通機能をまとめた基底クラス
@@ -24,86 +25,33 @@ class AppBase(object):
 		self.reinit( port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, App, smode, bErr)
 
 	def __del__(self):
-		self.SerialClose()
 		if self.file != None and self.b_openfile :
 			self.FileClose()
 
 	# 各変数の初期化
 	def reinit( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, App=None, smode='Ascii', bErr=False ):
-		self.port = port
-		self.baud = baud
-		self.timeout = timeout
-		self.parity = parity
-		self.stopbits = stop
-		self.bytesize = byte
-		self.rtscts = rtscts
-		self.dsrdtr = dsrdtr
-
 		self.AppName = App
-		self.SerialMode = smode
-
 		self.ShowError = bErr
 
-		self.ser = None
 		self.b_arrived = False
 		self.arrive_time = None
 		self.file = None
 		self.b_openfile = False
 		self.ReadDict = None
-		self.ReadData = None
+		self.SerialData = None
 
-		if self.port != None and self.ser == None :
-			if self.SerialOpen():
-				self.ReadData = ReadSerial(self.ser, self.SerialMode )
-			else:
-				__ErrStr = "Cannot open " + self.port + "..."
-				print( __ErrStr )
-				print( "Please close the software using " + self.port + "." )
-				exit(1)
-		else:
-			print( "Serial port is not specified..." )
-			exit(1)
-
-	# シリアルポートを開く
-	def SerialOpen(self):
-		if self.port != None:
-			try:
-				self.ser = serial.Serial(
-							self.port,
-							self.baud,
-							timeout = self.timeout,
-							parity = self.parity,
-							stopbits = self.stopbits,
-							bytesize = self.bytesize,
-							rtscts = self.rtscts,
-							dsrdtr = self.dsrdtr
-						)
-				return True
-			except:
-				if self.ShowError:
-					import traceback
-					traceback.print_exc()
-
-				return False
-		else:
-			return False
-
-	# シリアルポートを閉じる
-	def SerialClose(self):
-		if self.ser != None:
-			self.ser.close()
+		self.SerialData = MWSerial( port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, smode )
 
 	# シリアルデータを読み込む
 	def SerialRead(self):
-		self.ReadData.ReadSerialLine()
-		if self.ReadData.IsDataArrived():
-			return self.ReadData.GetPayload()
+		self.SerialData.ReadSerialLine()
+		if self.SerialData.IsDataArrived():
+			return self.SerialData.GetPayload()
 		else:
 			return None
 
 	def SerialWrite(self, Cmd):
-		if self.ser != None:
-			self.ser.write(Cmd)
+		self.SerialData.SerialWrite(Cmd)
 
 	# このメソッドを呼んだ日付のファイル名を開く
 	def FileOpen(self):

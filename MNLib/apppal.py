@@ -1,18 +1,11 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-try:
-	import serial
-except ImportError:
-	print( "Cannot inport pyserial..." )
-	print( "Please install pyserial. " )
-	quit()
-
 import datetime
 import os
 
 from appbase import AppBase
-from readSerial import ReadSerial
+from mwSerial import MWSerial
 
 class AppPAL(AppBase):
 	# コンストラクタ
@@ -23,7 +16,6 @@ class AppPAL(AppBase):
 
 	# デストラクタ
 	def __del__(self):
-		self.SerialClose()
 		if self.file != None and self.b_openfile :
 			self.FileClose()
 
@@ -90,12 +82,14 @@ class AppPAL(AppBase):
 						__Div = 100.0
 					elif __SensorID == 0x03: __StrSensorID = 'Illuminance'
 					elif __SensorID == 0x04: __StrSensorID = 'Acceleration'
+					elif __SensorID == 0x05: __StrSensorID = 'EventID'
 					elif __SensorID == 0x30:
 						if __ExByte == 0: __StrSensorID = 'ADC'
 						if __ExByte == 8: __StrSensorID = 'Power'
 						else: __StrSensorID = 'ADC%d' % (__ExByte)
 					elif __SensorID == 0x31: __StrSensorID = 'DIO'
 					elif __SensorID == 0x32: __StrSensorID = 'EEPROM'
+					elif __SensorID == 0x34: __StrSensorID = 'WakeupFactor'
 					else: __StrSensorID = 'Unknown'
 
 					if __ErrCode == 0:
@@ -120,6 +114,16 @@ class AppPAL(AppBase):
 							self.ReadDict[__StrSensorID+'X'].append( self.Unsigned2Signed(self.BinList2Int(self.ByteArr[__Addr:__Addr+2]), 2)/1000.0 )
 							self.ReadDict[__StrSensorID+'Y'].append( self.Unsigned2Signed(self.BinList2Int(self.ByteArr[__Addr+2:__Addr+4]), 2)/1000.0 )
 							self.ReadDict[__StrSensorID+'Z'].append( self.Unsigned2Signed(self.BinList2Int(self.ByteArr[__Addr+4:__Addr+6]), 2)/1000.0 )
+						elif __StrSensorID == 'EventID':
+							self.ReadDict[__StrSensorID] = [ None, None, None ]
+							self.ReadDict[__StrSensorID][0] = __ExByte
+							self.ReadDict[__StrSensorID][1] = self.ByteArr[__Addr]
+							self.ReadDict[__StrSensorID][2] = self.BinList2Int(self.ByteArr[__Addr+1:__Addr+4])
+						elif __StrSensorID == 'WakeupFactor':
+							self.ReadDict[__StrSensorID] = [ None, None, None ]
+							self.ReadDict[__StrSensorID][0] = self.ByteArr[__Addr]
+							self.ReadDict[__StrSensorID][1] = self.ByteArr[__Addr+1]
+							self.ReadDict[__StrSensorID][2] = self.ByteArr[__Addr+2]
 						else:
 							if __Type == 'Variable':
 								self.ReadDict[__StrSensorID] = self.ByteArr[__Addr:__Addr+__DataNum]
@@ -303,7 +307,7 @@ class AppPAL(AppBase):
 					self.ReadDict['Mode'] = self.ByteArr[18]
 					self.ReadDict['EndDeviceDI'] = self.ByteArr[19]
 					self.ReadDict['ParentDO'] = self.ByteArr[20]
-				else:
+				elif self.ReadDict['Sensor'] != 0x10:
 					return False
 
 			if self.AutoLog:
@@ -328,7 +332,7 @@ class AppPAL(AppBase):
 		elif __Element == 0x38: __PrintStr = 'S11059-02DT'
 		elif __Element == 0x39: __PrintStr = 'BME280'
 		elif __Element == 0x3A: __PrintStr = 'SHT31'
-		elif __Element == 0x3B: __PrintStr = 'SHT31'
+		elif __Element == 0x3B: __PrintStr = 'SHTC3'
 		elif __Element == 0x62: __PrintStr = 'ADXL362'
 		elif __Element == 0x80: __PrintStr = 'PAL'
 		elif __Element == 0xD1: __PrintStr = 'MultiSensor'
@@ -364,6 +368,94 @@ class AppPAL(AppBase):
 			
 
 		return __ReturnVal
+	
+	def GetPALName(self, pal):
+		__ReturnVal = ''
+		if pal == 0x01: __ReturnVal = 'OPENCLOSE-SENSE-PAL'
+		elif pal == 0x02: __ReturnVal = 'AMIENT-SENSE-PAL'
+		elif pal == 0x03: __ReturnVal = 'MOTION-SENSE-PAL'
+		elif pal == 0x04: __ReturnVal = 'NOTICE-PAL'
+		elif pal == 0x05: __ReturnVal = 'TWELITE-CUE'
+
+		return __ReturnVal
+
+	def GetEventName(self, event):
+		__eventname = ['Unknown', 'Unknown']
+		if not isinstance(event, list):
+			return __eventname
+
+		if event[0]&0x7F == 0:
+			__eventname[0] = 'Magnet'
+			if event[1]&0x7F == 0:
+				__eventname[1] == 'Open'
+			elif event[1]&0x7F == 1:
+				__eventname[1] = 'Close(N)'
+			elif event[1]&0x7F == 2:
+				__eventname[1] = 'Close(S)'
+		elif event[0]&0x7F == 1:
+			__eventname[0] = 'Temperature'
+		elif event[0]&0x7F == 2:
+			__eventname[0] = 'Humidity'
+		elif event[0]&0x7F == 3:
+			__eventname[0] = 'Illuminance'
+		elif event[0]&0x7F == 4:
+			__eventname[0] = 'Acceleration'
+			if event[1] == 1:
+				__eventname[1] = 'Dice1'
+			elif event[1] == 2:
+				__eventname[1] = 'Dice2'
+			elif event[1] == 3:
+				__eventname[1] = 'Dice3'
+			elif event[1] == 4:
+				__eventname[1] = 'Dice4'
+			elif event[1] == 5:
+				__eventname[1] = 'Dice5'
+			elif event[1] == 6:
+				__eventname[1] = 'Dice6'
+			elif event[1] == 8:
+				__eventname[1] = 'Shake'
+			elif event[1] == 16:
+				__eventname[1] = 'Move'
+
+		return __eventname
+
+	def GetWakeupFactorName(self, factor):
+		__factorname = [ 'Unknown', 'Unknown', 'Unknown' ]
+		if not isinstance( factor, list ):
+			return __factorname
+
+		if isinstance(factor[0], int):
+			__factorname[0] = 'PacketID_%d' % factor[0]
+
+		if isinstance(factor[1], int):
+			if factor[1] == 0x00:
+				__factorname[1] = 'Magnet'
+			elif factor[1] == 0x01:
+				__factorname[1] = 'Temperature'
+			elif factor[1] == 0x02:
+				__factorname[1] = 'Humidity'
+			elif factor[1] == 0x03:
+				__factorname[1] = 'Illuminance'
+			elif factor[1] == 0x04:
+				__factorname[1] = 'Acceleration'
+			elif factor[1] == 0x31:
+				__factorname[1] = 'DIO'
+			elif factor[1] == 0x35:
+				__factorname[1] = 'Timer'
+
+		if isinstance(factor[2], int):
+			if factor[2] == 0:
+				__factorname[2] = 'Occurred_Event'
+			elif factor[2] == 1:
+				__factorname[2] = 'Changed_Value'
+			elif factor[2] == 2:
+				__factorname[2] = 'Upper_then_Threshold'
+			elif factor[2] == 3:
+				__factorname[2] = 'Lower_Then_Threshold'
+			elif factor[2] == 4:
+				__factorname[2] = 'Within_Threshold'
+
+		return __factorname
 
 	# 自動ログ機能を有効にする
 	def EnableAutoLog(self):
@@ -376,16 +468,24 @@ class AppPAL(AppBase):
 	# ログを書き込むファイルを開く
 	def FileOpen(self):
 		self.b_openfile = True
+		__Appname = self.AppName
 		__date = datetime.datetime.today()
 		__ModuleSID = self.ReadDict['EndDeviceSID'][1:len(self.ReadDict['EndDeviceSID'])]
 		__SensorName = self.GetSensorName()
 		if __SensorName == 'ADXL34x':
 			if self.ReadDict['Mode'] == 0xFB:
 				__SensorName += '-Spin'
+		elif __SensorName == 'PAL':
+			__SensorName = self.GetPALName(self.ReadDict['PALID'])
 
-		__FileName = self.AppName + '_'+ __ModuleSID + '_' + __SensorName + '_%04d%02d%02d' % (__date.year, __date.month, __date.day)
+			if self.ReadDict['PALID'] == 0x05:
+				__Appname = 'AppCUE'
+
+		__FileName = __Appname + '_'+ __ModuleSID + '_' + __SensorName + '_%04d%02d%02d' % (__date.year, __date.month, __date.day)
 		__ext = '.csv'
 		__FileName += __ext
+
+		#print(__FileName)
 
 		try:
 			if os.path.exists(__FileName):
@@ -403,15 +503,20 @@ class AppPAL(AppBase):
 	def OutputCSV(self):
 		self.FileOpen()
 		self.OutputList(self.CreateOutputList())
-		if (self.ReadDict['Sensor'] == 0x35 and self.ReadDict['Mode'] == 0xFA) or self.ReadDict['Sensor'] == 0x62 or (self.ReadDict['Sensor'] == 0x80 and self.ReadDict['PALID'] == 0x03):
-			i = 1
-			__AccelList = ['']*len(self.ReadDict)
-			while i < len(self.ReadDict['AccelerationX']):
-				__AccelList[len(__AccelList)-3] =  self.ReadDict['AccelerationX'][i]
-				__AccelList[len(__AccelList)-2] =  self.ReadDict['AccelerationY'][i]
-				__AccelList[len(__AccelList)-1] =  self.ReadDict['AccelerationZ'][i]
-				self.OutputList(__AccelList)
-				i += 1
+		if ( 'AccelerationX' in self.ReadDict.keys() ):
+			if isinstance(self.ReadDict['AccelerationX'], list):
+				i = 1
+				while i < len(self.ReadDict['AccelerationX']):
+					__AccelList = ['']*len(self.ReadDict)
+					j = 0
+					for k in self.ReadDict.keys():
+						if k.find('Acceleration') >= 0:
+							__AccelList[j] = self.ReadDict[k][i]
+
+						j += 1
+
+					self.OutputList(__AccelList)
+					i += 1
 
 		self.FileClose()
 
@@ -463,13 +568,13 @@ class AppPAL(AppBase):
 
 			elif keys == 'HALLIC':
 				if __Element&0x7F == 0:
-					__OutStr = 'Open'
+					__OutStr = '\tOpen'
 				elif __Element&0x7F == 1:
-					__OutStr = 'Close(N)'
+					__OutStr = '\tClose(N)'
 				elif __Element&0x7F == 2:
-					__OutStr = 'Close(S)'
+					__OutStr = '\tClose(S)'
 				else:
-					__OutStr = 'Unknown'
+					__OutStr = '\tUnknown'
 
 			# 加速度
 			elif keys.find('Acceleration') >= 0:
@@ -478,11 +583,26 @@ class AppPAL(AppBase):
 				else:
 					__OutStr = __Element
 
+			elif keys == 'EventID' :
+				if isinstance( __Element, list ):
+					__tmp = self.GetEventName(__Element)
+					__OutStr = "\t%s:%s" % (__tmp[0], __tmp[1])
+				else:
+					__OutStr = __Element
+
+			elif keys == 'WakeupFactor' :
+				if isinstance( __Element, list ):
+					__tmp = self.GetWakeupFactorName(__Element)
+					__OutStr = "\t%s:%s:%s" % (__tmp[0], __tmp[1], __tmp[2])
+				else:
+					__OutStr = __Element
+
 			else:
 				__OutStr = __Element
 
 			Outlist.append(__OutStr)
 
+#		print(Outlist)
 		return Outlist
 
 	# 辞書の中のデータを標準出力する
@@ -491,7 +611,7 @@ class AppPAL(AppBase):
 		__KeyList = self.ReadDict.keys()
 
 		# コンソールをクリアする
-		#print( '%c[2J%c[H' % (27, 27) )
+		#print( '%c[2J%c[H' % (27, 27), end='' )
 		if os.name == 'nt':
 			os.system('cls')
 		elif os.name == 'posix':
@@ -522,6 +642,14 @@ class AppPAL(AppBase):
 				# 最上位ビットが不要なため消す
 				else:
 					__PrintStr = __Element[1:len(self.ReadDict[keys])]
+
+			# PAL ID
+			elif keys == 'PALID':
+				if __Element == 0x01: __PrintStr = 'OPEN-CLOSE PAL'
+				elif __Element == 0x02: __PrintStr = 'AMBIENT PAL'
+				elif __Element == 0x03: __PrintStr = 'MOTION PAL'
+				elif __Element == 0x04: __PrintStr = 'NOTICE PAL'
+				elif __Element == 0x05: __PrintStr = 'TWELITE CUE'
 
 			# LQI
 			elif keys == 'LQI':
@@ -562,6 +690,24 @@ class AppPAL(AppBase):
 						__PrintStr += '%.03f\t' % data
 				else:
 					__PrintStr = '%.03f' % __Element + ' [g]'
+
+			elif keys == 'EventID':
+				if isinstance( __Element, list ):
+					__tmp = self.GetEventName(__Element)
+					__PrintStr = "%s, %s" % (__tmp[0], __tmp[1])
+				else:
+					__PrintStr = str(__Element)
+
+			elif keys == 'WakeupFactor':
+				if isinstance( __Element, list ):
+					__tmp = self.GetWakeupFactorName(__Element)
+					__PrintStr = "%s, %s, %s" % (__tmp[0], __tmp[1],__tmp[2])
+				else:
+					__PrintStr = str(__Element)
+
+			# サンプリング周波数
+			elif keys.find('SamplingFrequency') >= 0:
+				__PrintStr = str(__Element) + ' [Hz]'
 
 			# 角度
 			elif keys == 'Degree':
@@ -604,7 +750,6 @@ if __name__ == '__main__':
 		while True:
 			if PAL.ReadSensorData():
 				PAL.ShowSensorData()
-				#Tag.OutputData()
 
 	except KeyboardInterrupt:
 		del PAL
