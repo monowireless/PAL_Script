@@ -5,12 +5,12 @@ import datetime
 import os
 
 from appbase import AppBase
-from mwSerial import MWSerial
+# from mwSerial import MWSerial
 
 class AppPAL(AppBase):
 	# コンストラクタ
-	def __init__(self, port=None, baud=115200, tout=0.1 , sformat='Ascii', autolog=False, err=False ):
-		super(AppPAL,self).__init__(port,baud,tout,App='AppPAL', smode=sformat, bErr=err)
+	def __init__(self, port=None, baud=115200, tout=0.1 , sformat='Ascii', autolog=False, err=False, stdinput=False, rxserialoutput=False, Logfilename=None ):
+		super(AppPAL,self).__init__(port,baud,tout,App='AppPAL', smode=sformat, bErr=err, bStdinput=stdinput, bRxserialOutput=rxserialoutput, logfilename=Logfilename  )
 		self.AutoLog = autolog
 		self.InitDict()
 
@@ -24,7 +24,9 @@ class AppPAL(AppBase):
 		self.InitDict()
 		self.ByteArr = self.SerialRead()
 		if self.ByteArr != None:
-			self.ReadDict['ArriveTime'] = datetime.datetime.today()
+			self.ReadDict['ArriveTime'] = self.GetReceiptTime()
+			if self.ReadDict['ArriveTime'] == None:
+				self.ReadDict['ArriveTime'] = datetime.datetime.today()
 			self.ReadDict['LogicalID'] = self.ByteArr[11]
 			self.ReadDict['EndDeviceSID'] = self.BinList2StrHex(self.ByteArr[7:11])
 			self.ReadDict['RouterSID'] = self.BinList2StrHex(self.ByteArr[0:4])
@@ -311,7 +313,7 @@ class AppPAL(AppBase):
 					return False
 
 			if self.AutoLog:
-				self.OutputData()
+				self.OutputCSV()
 
 			return True
 		else:
@@ -365,19 +367,24 @@ class AppPAL(AppBase):
 			elif mode == 0x01: __ReturnVal = 'Rising Edge'
 			elif mode == 0x02: __ReturnVal = 'Falling/Rising Edge'
 			elif mode == 0x04: __ReturnVal = 'TWELITE SWING'
-			
 
 		return __ReturnVal
 	
-	def GetPALName(self, pal):
-		__ReturnVal = ''
-		if pal == 0x01: __ReturnVal = 'OPENCLOSE-SENSE-PAL'
-		elif pal == 0x02: __ReturnVal = 'AMIENT-SENSE-PAL'
-		elif pal == 0x03: __ReturnVal = 'MOTION-SENSE-PAL'
-		elif pal == 0x04: __ReturnVal = 'NOTICE-PAL'
-		elif pal == 0x05: __ReturnVal = 'TWELITE-CUE'
+	def GetPALName(self):
+		__ReturnVal = None
 
-		return __ReturnVal
+		if 'PALID' in self.ReadDict.keys():
+			pal = self.ReadDict['PALID']
+			if pal == 0x01: __ReturnVal = 'OPENCLOSE-SENSE-PAL'
+			elif pal == 0x02: __ReturnVal = 'AMBIENT-SENSE-PAL'
+			elif pal == 0x03: __ReturnVal = 'MOTION-SENSE-PAL'
+			elif pal == 0x04: __ReturnVal = 'NOTICE-PAL'
+			elif pal == 0x05: __ReturnVal = 'TWELITE-CUE'
+			elif pal == 0x06: __ReturnVal = 'TWELITE-ARIA'
+
+			return __ReturnVal
+		else:
+			return None
 
 	def GetEventName(self, event):
 		__eventname = ['Unknown', 'Unknown']
@@ -416,6 +423,10 @@ class AppPAL(AppBase):
 				__eventname[1] = 'Shake'
 			elif event[1] == 16:
 				__eventname[1] = 'Move'
+		elif event[0]&0x7F == 0x35:
+			__eventname[0] = 'WakeupTimer'
+			if event[1] == 1:
+				__eventname[1] = 'Fire'
 
 		return __eventname
 
@@ -484,8 +495,6 @@ class AppPAL(AppBase):
 		__FileName = __Appname + '_'+ __ModuleSID + '_' + __SensorName + '_%04d%02d%02d' % (__date.year, __date.month, __date.day)
 		__ext = '.csv'
 		__FileName += __ext
-
-		#print(__FileName)
 
 		try:
 			if os.path.exists(__FileName):
@@ -602,7 +611,6 @@ class AppPAL(AppBase):
 
 			Outlist.append(__OutStr)
 
-#		print(Outlist)
 		return Outlist
 
 	# 辞書の中のデータを標準出力する
@@ -650,6 +658,7 @@ class AppPAL(AppBase):
 				elif __Element == 0x03: __PrintStr = 'MOTION PAL'
 				elif __Element == 0x04: __PrintStr = 'NOTICE PAL'
 				elif __Element == 0x05: __PrintStr = 'TWELITE CUE'
+				elif __Element == 0x06: __PrintStr = 'TWELITE ARIA'
 
 			# LQI
 			elif keys == 'LQI':
@@ -694,14 +703,14 @@ class AppPAL(AppBase):
 			elif keys == 'EventID':
 				if isinstance( __Element, list ):
 					__tmp = self.GetEventName(__Element)
-					__PrintStr = "%s, %s" % (__tmp[0], __tmp[1])
+					__PrintStr = '%s, %s' % (__tmp[0], __tmp[1])
 				else:
 					__PrintStr = str(__Element)
 
 			elif keys == 'WakeupFactor':
 				if isinstance( __Element, list ):
 					__tmp = self.GetWakeupFactorName(__Element)
-					__PrintStr = "%s, %s, %s" % (__tmp[0], __tmp[1],__tmp[2])
+					__PrintStr = '%s, %s, %s' % (__tmp[0], __tmp[1],__tmp[2])
 				else:
 					__PrintStr = str(__Element)
 

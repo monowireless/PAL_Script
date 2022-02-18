@@ -13,6 +13,8 @@ import os
 #from queue import Queue
 
 from mwSerial import MWSerial
+from mwStdInput import MWStdInput
+from mwFileread import MWFileRead
 
 #
 # アプリごとに使用するであろう共通機能をまとめた基底クラス
@@ -21,15 +23,15 @@ from mwSerial import MWSerial
 
 class AppBase(object):
 	# コンストラクタ
-	def __init__( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, App=None, smode='Ascii', bErr=False):
-		self.reinit( port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, App, smode, bErr)
+	def __init__( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, App=None, smode='Ascii', bErr=False, bStdinput=False, bRxserialOutput=False, logfilename=None ):
+		self.reinit( port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, App, smode, bErr, bStdinput, bRxserialOutput, logfilename)
 
 	def __del__(self):
 		if self.file != None and self.b_openfile :
 			self.FileClose()
 
 	# 各変数の初期化
-	def reinit( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, App=None, smode='Ascii', bErr=False ):
+	def reinit( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, App=None, smode='Ascii', bErr=False, bStdinput=False, bRxserialOutput=False, logfilename=None ):
 		self.AppName = App
 		self.ShowError = bErr
 
@@ -40,7 +42,13 @@ class AppBase(object):
 		self.ReadDict = None
 		self.SerialData = None
 
-		self.SerialData = MWSerial( port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, smode )
+		if logfilename == None:
+			if bStdinput:
+				self.SerialData = MWStdInput( mode=smode, rxout=bRxserialOutput )
+			else:
+				self.SerialData = MWSerial( port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, smode, bRxserialOutput )
+		else:
+			self.SerialData = MWFileRead(filename=logfilename)
 
 	# シリアルデータを読み込む
 	def SerialRead(self):
@@ -49,6 +57,9 @@ class AppBase(object):
 			return self.SerialData.GetPayload()
 		else:
 			return None
+
+	def GetReceiptTime(self):
+		return self.SerialData.GetReceiptTime()
 
 	def SerialWrite(self, Cmd):
 		self.SerialData.SerialWrite(Cmd)

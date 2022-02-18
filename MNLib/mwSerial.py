@@ -1,6 +1,8 @@
 #!/usr/bin/python
 # coding: UTF-8
 
+import datetime
+
 try:
 	import serial
 	import serial.tools.list_ports
@@ -15,13 +17,13 @@ from parseFmt_Binary import FmtBinary
 # シリアル読み込みを行うクラス
 
 class MWSerial:
-	def __init__( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, mode='Ascii' ):
-		self.reinit(port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, mode)
+	def __init__( self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, mode='Ascii', rxout=False ):
+		self.reinit(port, baud, timeout, parity, stop, byte, rtscts, dsrdtr, mode, rxout)
 
 	def __del__(self):
 		self.SerialClose()
 
-	def reinit(self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, mode='Ascii' ):
+	def reinit(self, port=None, baud=115200, timeout=0.1, parity=serial.PARITY_NONE, stop=1, byte=8, rtscts=0, dsrdtr=0, mode='Ascii', rxout=False ):
 		self.port = port
 		self.baud = baud
 		self.timeout = timeout
@@ -31,9 +33,11 @@ class MWSerial:
 		self.rtscts = rtscts
 		self.dsrdtr = dsrdtr
 
+		self.receipttime = None
 		self.ser = None
 		self.mode = mode
 		self.bDataArrived = False
+		self.rxout = rxout
 
 		if self.port == None:
 			self.SerialSelect()
@@ -60,7 +64,7 @@ class MWSerial:
 	def SerialSelect(self, portname=None):
 
 		if not portname == None:
-			self.port = portname
+			self.port = None
 			return
 
 		__port = serial.tools.list_ports.comports()
@@ -139,14 +143,23 @@ class MWSerial:
 		else:
 			return None
 
+	def GetReceiptTime(self):
+		if self.IsDataArrived():
+			return self.receipttime
+
+		return None
+
 	def ReadSerialLine(self):
 		self.bDataArrived = False
 		if self.mode == 'Ascii':
 			self.msg = self.ser.read(1)
 			if(len(self.msg) > 0):
+				if self.rxout:
+					print( msg, end='' )
 				self.Fmt.process(self.msg)
 				if self.Fmt.is_comp():
 					self.bDataArrived = True
+					self.receipttime = datetime.datetime.today()
 			else:
 				self.bDataArrived = False
 
@@ -159,6 +172,7 @@ class MWSerial:
 						break
 				if self.Fmt.is_comp():
 					self.bDataArrived = True
+					self.receipttime = datetime.datetime.today()
 				else:
 					self.bDataArrived = False
 					self.Fmt.terminate()
@@ -180,8 +194,7 @@ class MWSerial:
 
 # テスト用コード
 if __name__=='__main__':
-	ser = serial.Serial( "COM7", 115200, timeout=0.1  )
-	fmt = MWSerial( ser, 'Ascii' )
+	fmt = MWSerial( 'COM10', mode='Ascii' )
 
 	i = 0
 	try:
@@ -191,4 +204,4 @@ if __name__=='__main__':
 				msg = fmt.GetPayload()
 				print(msg)
 	except KeyboardInterrupt:
-		ser.close()
+		fmt.SerialClose()
